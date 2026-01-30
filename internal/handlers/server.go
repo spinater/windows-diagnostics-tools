@@ -171,6 +171,13 @@ func (s *Server) getStatus() *models.MonitoringStatus {
 
 // collectionLoop runs the metric collection loop
 func (s *Server) collectionLoop() {
+	// Recover from any panic to prevent server crash
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Collection loop panic recovered: %v", r)
+		}
+	}()
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -179,31 +186,40 @@ func (s *Server) collectionLoop() {
 		case <-s.stopChan:
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), s.interval)
-			metrics, err := s.collector.CollectAll(ctx)
-			cancel()
+			// Wrap collection in panic recovery
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("Collection panic recovered: %v", r)
+					}
+				}()
 
-			if err != nil {
-				log.Printf("Collection error: %v", err)
-				continue
-			}
+				ctx, cancel := context.WithTimeout(context.Background(), s.interval)
+				metrics, err := s.collector.CollectAll(ctx)
+				cancel()
 
-			metrics.Timestamp = time.Now()
+				if err != nil {
+					log.Printf("Collection error: %v", err)
+					return
+				}
 
-			s.mu.Lock()
-			s.samplesCount++
-			s.metricsHistory = append(s.metricsHistory, metrics)
-			if len(s.metricsHistory) > s.maxHistory {
-				s.metricsHistory = s.metricsHistory[1:]
-			}
-			s.mu.Unlock()
+				metrics.Timestamp = time.Now()
 
-			// Send to broadcast channel
-			select {
-			case s.broadcast <- metrics:
-			default:
-				// Skip if channel is full
-			}
+				s.mu.Lock()
+				s.samplesCount++
+				s.metricsHistory = append(s.metricsHistory, metrics)
+				if len(s.metricsHistory) > s.maxHistory {
+					s.metricsHistory = s.metricsHistory[1:]
+				}
+				s.mu.Unlock()
+
+				// Send to broadcast channel
+				select {
+				case s.broadcast <- metrics:
+				default:
+					// Skip if channel is full
+				}
+			}()
 		}
 	}
 }

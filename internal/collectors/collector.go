@@ -3,6 +3,8 @@ package collectors
 
 import (
 	"context"
+	"log"
+
 	"loadrunner-diagnosis/internal/models"
 )
 
@@ -68,35 +70,89 @@ func NewManager() (*Manager, error) {
 func (m *Manager) CollectAll(ctx context.Context) (*models.SystemMetrics, error) {
 	metrics := &models.SystemMetrics{}
 
-	// Collect TCP metrics
-	if tcp, err := m.tcp.Collect(ctx); err == nil {
-		metrics.TCP = tcp
-	}
+	// Collect TCP metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("TCP collector panic: %v", r)
+			}
+		}()
+		if tcp, err := m.tcp.Collect(ctx); err == nil {
+			metrics.TCP = tcp
+		} else {
+			log.Printf("TCP collect error: %v", err)
+		}
+	}()
 
-	// Collect Memory metrics
-	if mem, err := m.memory.Collect(ctx); err == nil {
-		metrics.Memory = mem
-	}
+	// Collect Memory metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Memory collector panic: %v", r)
+			}
+		}()
+		if mem, err := m.memory.Collect(ctx); err == nil {
+			metrics.Memory = mem
+		} else {
+			log.Printf("Memory collect error: %v", err)
+		}
+	}()
 
-	// Collect CPU metrics
-	if cpu, err := m.cpu.Collect(ctx); err == nil {
-		metrics.CPU = cpu
-	}
+	// Collect CPU metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CPU collector panic: %v", r)
+			}
+		}()
+		if cpu, err := m.cpu.Collect(ctx); err == nil {
+			metrics.CPU = cpu
+		} else {
+			log.Printf("CPU collect error: %v", err)
+		}
+	}()
 
-	// Collect Disk metrics
-	if disk, err := m.disk.Collect(ctx); err == nil {
-		metrics.Disk = disk
-	}
+	// Collect Disk metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Disk collector panic: %v", r)
+			}
+		}()
+		if disk, err := m.disk.Collect(ctx); err == nil {
+			metrics.Disk = disk
+		} else {
+			log.Printf("Disk collect error: %v", err)
+		}
+	}()
 
-	// Collect Network metrics
-	if net, err := m.network.Collect(ctx); err == nil {
-		metrics.Network = net
-	}
+	// Collect Network metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Network collector panic: %v", r)
+			}
+		}()
+		if net, err := m.network.Collect(ctx); err == nil {
+			metrics.Network = net
+		} else {
+			log.Printf("Network collect error: %v", err)
+		}
+	}()
 
-	// Collect Process metrics
-	if procs, err := m.process.Collect(ctx); err == nil {
-		metrics.Processes = procs
-	}
+	// Collect Process metrics with panic recovery
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Process collector panic: %v", r)
+			}
+		}()
+		if procs, err := m.process.Collect(ctx); err == nil {
+			metrics.Processes = procs
+		} else {
+			log.Printf("Process collect error: %v", err)
+		}
+	}()
 
 	return metrics, nil
 }
