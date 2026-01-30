@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoadRunner Diagnosis Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0a0;
+            --accent-green: #00d9a5;
+            --accent-blue: #00b4d8;
+            --accent-yellow: #ffc107;
+            --accent-red: #e63946;
+            --accent-purple: #9d4edd;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--bg-card);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-start {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .btn-start:hover {
+            background: #00b894;
+        }
+
+        .btn-stop {
+            background: var(--accent-red);
+            color: #fff;
+        }
+
+        .btn-stop:hover {
+            background: #c0392b;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-secondary);
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-red);
+        }
+
+        .status-indicator.running {
+            background: var(--accent-green);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-content {
+            padding: 20px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: var(--bg-secondary);
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            background: var(--bg-card);
+        }
+
+        .tab.active {
+            background: var(--bg-card);
+            color: var(--accent-blue);
+            border-bottom: 2px solid var(--accent-blue);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+
+        .card-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .card-value.green { color: var(--accent-green); }
+        .card-value.yellow { color: var(--accent-yellow); }
+        .card-value.red { color: var(--accent-red); }
+        .card-value.blue { color: var(--accent-blue); }
+
+        .gauge-container {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto;
+        }
+
+        .chart-container {
+            height: 250px;
+            position: relative;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-weight: 600;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .state-badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .state-established { background: var(--accent-green); color: #000; }
+        .state-time-wait { background: var(--accent-yellow); color: #000; }
+        .state-close-wait { background: var(--accent-red); color: #fff; }
+        .state-listen { background: var(--accent-blue); color: #000; }
+        .state-other { background: var(--text-secondary); color: #000; }
+
+        .progress-bar {
+            height: 20px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.5s;
+        }
+
+        .progress-fill.green { background: var(--accent-green); }
+        .progress-fill.yellow { background: var(--accent-yellow); }
+        .progress-fill.red { background: var(--accent-red); }
+
+        .alert-box {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .alert-warning {
+            background: rgba(255, 193, 7, 0.2);
+            border-left: 4px solid var(--accent-yellow);
+        }
+
+        .alert-critical {
+            background: rgba(230, 57, 70, 0.2);
+            border-left: 4px solid var(--accent-red);
+        }
+
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .overview-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .overview-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .interval-select {
+            padding: 8px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--text-secondary);
+            color: var(--text-primary);
+            border-radius: 5px;
+        }
+
+        /* Window Status Box Styles */
+        .window-status-box {
+            width: 120px;
+            height: 120px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            transition: all 0.5s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .window-status-box.free {
+            background: linear-gradient(135deg, #00d9a5, #00b894);
+            animation: pulse-free 2s infinite;
+        }
+
+        .window-status-box.busy {
+            background: linear-gradient(135deg, #e63946, #c0392b);
+            animation: pulse-busy 0.5s infinite;
+        }
+
+        .window-status-box.warning {
+            background: linear-gradient(135deg, #ffc107, #e6a800);
+            animation: pulse-warning 1s infinite;
+        }
+
+        .window-icon {
+            font-size: 2.5rem;
+            color: white;
+        }
+
+        .window-label {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: white;
+            margin-top: 5px;
+        }
+
+        @keyframes pulse-free {
+            0%, 100% { box-shadow: 0 4px 15px rgba(0, 217, 165, 0.4); }
+            50% { box-shadow: 0 4px 25px rgba(0, 217, 165, 0.6); }
+        }
+
+        @keyframes pulse-busy {
+            0%, 100% { box-shadow: 0 4px 15px rgba(230, 57, 70, 0.6); transform: scale(1); }
+            50% { box-shadow: 0 4px 30px rgba(230, 57, 70, 0.9); transform: scale(1.02); }
+        }
+
+        @keyframes pulse-warning {
+            0%, 100% { box-shadow: 0 4px 15px rgba(255, 193, 7, 0.5); }
+            50% { box-shadow: 0 4px 25px rgba(255, 193, 7, 0.8); }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🔍 LoadRunner Diagnosis Tool</h1>
+        <div class="header-controls">
+            <div class="status-bar">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Stopped</span>
+                <span id="elapsedTime"></span>
+            </div>
+            <select id="intervalSelect" class="interval-select">
+                <option value="1000">1 second</option>
+                <option value="2000">2 seconds</option>
+                <option value="5000">5 seconds</option>
+                <option value="10000">10 seconds</option>
+            </select>
+            <button id="startBtn" class="btn btn-start" onclick="startMonitoring()">▶ Start System</button>
+            <button id="stopBtn" class="btn btn-stop" onclick="stopMonitoring()" disabled>⏹ Stop</button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('overview')">📊 Overview</button>
+            <button class="tab" onclick="showTab('tcp')">🌐 TCP/Network</button>
+            <button class="tab" onclick="showTab('memory')">🧠 Memory</button>
+            <button class="tab" onclick="showTab('cpu')">⚡ CPU</button>
+            <button class="tab" onclick="showTab('disk')">💾 Disk</button>
+            <button class="tab" onclick="showTab('network')">📡 Network</button>
+            <button class="tab" onclick="showTab('processes')">📋 Processes</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="tab-overview" class="tab-content active">
+            <div class="overview-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-value blue" id="cpuOverview">--%</div>
+                    <div class="stat-label">CPU Usage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🧠</div>
+                    <div class="stat-value green" id="memoryOverview">--%</div>
+                    <div class="stat-label">Memory Usage</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🌐</div>
+                    <div class="stat-value yellow" id="tcpConnections">--</div>
+                    <div class="stat-label">TCP Connections</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-value red" id="closeWaitCount">--</div>
+                    <div class="stat-label">CLOSE_WAIT</div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">System Overview</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="overviewChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Alerts</span>
+                    </div>
+                    <div id="alertsContainer">
+                        <div class="no-data">No active alerts</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TCP/Network Tab -->
+        <div id="tab-tcp" class="tab-content">
+            <!-- Zero Window Status Panel -->
+            <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));">
+                <div class="card-header">
+                    <span class="card-title">🪟 TCP Window Status (Free/Busy)</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                    <div style="text-align: center;">
+                        <div id="windowStatusIndicator" class="window-status-box free">
+                            <div class="window-icon">✓</div>
+                            <div class="window-label">FREE</div>
+                        </div>
+                        <p style="color: var(--text-secondary); margin-top: 10px; font-size: 0.9rem;">Current Window State</p>
+                    </div>
+                    <div>
+                        <div class="metric-row">
+                            <span class="metric-label">Zero Window Events</span>
+                            <span class="metric-value" id="zeroWindowEvents">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Zero Window Rate</span>
+                            <span class="metric-value" id="zeroWindowRate">0/sec</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Buffer Status</span>
+                            <span class="metric-value" id="bufferStatus">Normal</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div style="margin-bottom: 10px;">
+                            <span style="color: var(--text-secondary);">Window Health</span>
+                            <div class="progress-bar" style="margin-top: 5px;">
+                                <div id="windowHealthProgress" class="progress-fill green" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                        <div class="chart-container" style="height: 120px;">
+                            <canvas id="zeroWindowChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔴 TCP Zero Windows</span>
+                    </div>
+                    <div class="card-value red" id="zeroWindowCount">0</div>
+                    <p style="color: var(--text-secondary); margin-top: 10px;">
+                        Zero windows indicate the receiver buffer is full - application can't process data fast enough.
+                    </p>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Connection States</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="connectionStatesChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">TCP Statistics</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Segments Sent</span>
+                        <span class="metric-value" id="segmentsSent">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Segments Received</span>
+                        <span class="metric-value" id="segmentsReceived">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Retransmissions</span>
+                        <span class="metric-value" id="retransmissions">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Retransmission Rate</span>
+                        <span class="metric-value" id="retransmissionRate">--%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Connection Failures</span>
+                        <span class="metric-value" id="connectionFailures">--</span>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">⚠️ Unclosed Connections (CLOSE_WAIT)</span>
+                    </div>
+                    <div class="card-value yellow" id="closeWaitDetail">0</div>
+                    <p style="color: var(--text-secondary); margin-top: 10px;">
+                        CLOSE_WAIT indicates the remote side closed the connection, but the local application hasn't called close() yet.
+                    </p>
+                </div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header">
+                    <span class="card-title">Active Connections</span>
+                </div>
+                <div class="table-container">
+                    <table id="connectionsTable">
+                        <thead>
+                            <tr>
+                                <th>Local Address</th>
+                                <th>Remote Address</th>
+                                <th>State</th>
+                                <th>PID</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Tab -->
+        <div id="tab-memory" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Physical Memory</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="memoryGauge"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Memory Details</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Physical</span>
+                        <span class="metric-value" id="totalPhysical">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Used</span>
+                        <span class="metric-value" id="usedPhysical">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Available</span>
+                        <span class="metric-value" id="availablePhysical">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Committed</span>
+                        <span class="metric-value" id="committedMemory">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Cached</span>
+                        <span class="metric-value" id="cachedMemory">--</span>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Memory Over Time</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="memoryChart"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Page File</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total</span>
+                        <span class="metric-value" id="totalPageFile">--</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Used</span>
+                        <span class="metric-value" id="usedPageFile">--</span>
+                    </div>
+                    <div>
+                        <span class="metric-label">Usage</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill green" id="pageFileProgress" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CPU Tab -->
+        <div id="tab-cpu" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">CPU Usage</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="cpuGauge"></canvas>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">CPU Details</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Total Usage</span>
+                        <span class="metric-value" id="cpuTotal">--%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">User Time</span>
+                        <span class="metric-value" id="cpuUser">--%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Kernel Time</span>
+                        <span class="metric-value" id="cpuKernel">--%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Idle</span>
+                        <span class="metric-value" id="cpuIdle">--%</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Core Count</span>
+                        <span class="metric-value" id="coreCount">--</span>
+                    </div>
+                </div>
+                <div class="card" style="grid-column: span 2;">
+                    <div class="card-header">
+                        <span class="card-title">CPU Over Time</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="cpuChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disk Tab -->
+        <div id="tab-disk" class="tab-content">
+            <div class="grid" id="diskGrid">
+                <div class="no-data">No disk data available</div>
+            </div>
+        </div>
+
+        <!-- Network Tab -->
+        <div id="tab-network" class="tab-content">
+            <div class="grid" id="networkGrid">
+                <div class="no-data">No network data available</div>
+            </div>
+        </div>
+
+        <!-- Processes Tab -->
+        <div id="tab-processes" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">Top Processes by Memory</span>
+                </div>
+                <div class="table-container">
+                    <table id="processesTable">
+                        <thead>
+                            <tr>
+                                <th>PID</th>
+                                <th>Name</th>
+                                <th>Memory</th>
+                                <th>Memory %</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
