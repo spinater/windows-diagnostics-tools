@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -57,9 +58,15 @@ func main() {
 	}
 	mux.Handle("/", http.FileServer(http.FS(webContent)))
 
-	// Start server
-	addr := fmt.Sprintf(":%d", *port)
-	log.Printf("Starting server on http://localhost%s", addr)
+	// Find available port (starting from requested port)
+	actualPort := findAvailablePort(*port)
+	addr := fmt.Sprintf(":%d", actualPort)
+	
+	if actualPort != *port {
+		log.Printf("Port %d is in use, using port %d instead", *port, actualPort)
+	}
+	
+	log.Printf("Starting server on http://localhost:%d", actualPort)
 	log.Printf("Press Ctrl+C to stop")
 
 	// Handle shutdown
@@ -74,6 +81,26 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+// findAvailablePort finds an available port starting from the given port
+func findAvailablePort(startPort int) int {
+	for port := startPort; port < startPort+100; port++ {
+		addr := fmt.Sprintf(":%d", port)
+		listener, err := net.Listen("tcp", addr)
+		if err == nil {
+			listener.Close()
+			return port
+		}
+	}
+	// If no port found in range, let the OS assign one
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("Cannot find available port: %v", err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	return port
 }
 
 func printUsage() {
