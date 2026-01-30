@@ -6,6 +6,7 @@ package collectors
 
 import (
 	"context"
+	"fmt"
 	"unsafe"
 
 	"loadrunner-diagnosis/internal/models"
@@ -14,8 +15,9 @@ import (
 )
 
 var (
-	procGetDiskFreeSpaceExW = modkernel32.NewProc("GetDiskFreeSpaceExW")
-	procGetLogicalDrives    = modkernel32.NewProc("GetLogicalDrives")
+	diskKernel32            = windows.NewLazySystemDLL("kernel32.dll")
+	procGetDiskFreeSpaceExW = diskKernel32.NewProc("GetDiskFreeSpaceExW")
+	procGetLogicalDrives    = diskKernel32.NewProc("GetLogicalDrives")
 )
 
 // DiskCollector collects disk I/O metrics
@@ -23,6 +25,16 @@ type DiskCollector struct{}
 
 // NewDiskCollector creates a new disk collector
 func NewDiskCollector() (*DiskCollector, error) {
+	// Verify DLL and procs are available
+	if err := diskKernel32.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load kernel32.dll: %w", err)
+	}
+	if err := procGetDiskFreeSpaceExW.Find(); err != nil {
+		return nil, fmt.Errorf("GetDiskFreeSpaceExW not found: %w", err)
+	}
+	if err := procGetLogicalDrives.Find(); err != nil {
+		return nil, fmt.Errorf("GetLogicalDrives not found: %w", err)
+	}
 	return &DiskCollector{}, nil
 }
 
@@ -37,6 +49,11 @@ func (c *DiskCollector) Collect(ctx context.Context) (*models.DiskMetrics, error
 		Disks: []models.DiskInfo{},
 	}
 
+	// Safety check
+	if c == nil {
+		return metrics, fmt.Errorf("disk collector is nil")
+	}
+
 	// Get logical drives
 	drives, err := c.getLogicalDrives()
 	if err != nil {
@@ -48,7 +65,9 @@ func (c *DiskCollector) Collect(ctx context.Context) (*models.DiskMetrics, error
 		if err != nil {
 			continue
 		}
-		metrics.Disks = append(metrics.Disks, *info)
+		if info != nil {
+			metrics.Disks = append(metrics.Disks, *info)
+		}
 	}
 
 	return metrics, nil

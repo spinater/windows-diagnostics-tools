@@ -6,6 +6,7 @@ package collectors
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"unsafe"
 
@@ -35,9 +36,12 @@ type PROCESS_MEMORY_COUNTERS struct {
 }
 
 var (
-	procEnumProcesses             = modpsapi.NewProc("EnumProcesses")
-	procGetProcessMemoryInfo      = modpsapi.NewProc("GetProcessMemoryInfo")
-	procQueryFullProcessImageNameW = modkernel32.NewProc("QueryFullProcessImageNameW")
+	processPsapi    = windows.NewLazySystemDLL("psapi.dll")
+	processKernel32 = windows.NewLazySystemDLL("kernel32.dll")
+
+	procEnumProcesses              = processPsapi.NewProc("EnumProcesses")
+	procGetProcessMemoryInfo       = processPsapi.NewProc("GetProcessMemoryInfo")
+	procQueryFullProcessImageNameW = processKernel32.NewProc("QueryFullProcessImageNameW")
 )
 
 // ProcessCollector collects process metrics
@@ -47,10 +51,22 @@ type ProcessCollector struct {
 
 // NewProcessCollector creates a new process collector
 func NewProcessCollector() (*ProcessCollector, error) {
+	// Verify DLLs are available
+	if err := processPsapi.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load psapi.dll: %w", err)
+	}
+	if err := processKernel32.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load kernel32.dll: %w", err)
+	}
+
 	// Get total memory for percentage calculation
 	var memStatus MEMORYSTATUSEX
 	memStatus.Length = uint32(unsafe.Sizeof(memStatus))
-	procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
+	
+	// Use memory collector's proc if available
+	if procGlobalMemoryStatusEx != nil {
+		procGlobalMemoryStatusEx.Call(uintptr(unsafe.Pointer(&memStatus)))
+	}
 	
 	return &ProcessCollector{
 		totalMemory: memStatus.TotalPhys,

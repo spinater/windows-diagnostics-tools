@@ -6,6 +6,7 @@ package collectors
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"time"
@@ -17,7 +18,8 @@ import (
 )
 
 var (
-	procGetSystemTimes = modkernel32.NewProc("GetSystemTimes")
+	cpuKernel32        = windows.NewLazySystemDLL("kernel32.dll")
+	procGetSystemTimes = cpuKernel32.NewProc("GetSystemTimes")
 )
 
 // CPUCollector collects CPU metrics
@@ -32,6 +34,14 @@ type CPUCollector struct {
 
 // NewCPUCollector creates a new CPU collector
 func NewCPUCollector() (*CPUCollector, error) {
+	// Verify DLL is available
+	if err := cpuKernel32.Load(); err != nil {
+		return nil, fmt.Errorf("failed to load kernel32.dll: %w", err)
+	}
+	if err := procGetSystemTimes.Find(); err != nil {
+		return nil, fmt.Errorf("GetSystemTimes not found: %w", err)
+	}
+
 	c := &CPUCollector{
 		coreCount: runtime.NumCPU(),
 	}
