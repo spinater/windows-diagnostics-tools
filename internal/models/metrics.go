@@ -199,3 +199,98 @@ type Alert struct {
 	Threshold float64   `json:"threshold"`
 	Timestamp time.Time `json:"timestamp"`
 }
+
+// TraceRouteResult represents a complete traceroute result
+type TraceRouteResult struct {
+	Target      string          `json:"target"`
+	TargetIP    string          `json:"targetIP"`
+	TotalHops   int             `json:"totalHops"`
+	Completed   bool            `json:"completed"`
+	Hops        []TraceHop      `json:"hops"`
+	Timestamp   time.Time       `json:"timestamp"`
+	Duration    float64         `json:"duration"` // Total trace duration in ms
+}
+
+// TraceHop represents a single hop in a traceroute
+type TraceHop struct {
+	Hop       int       `json:"hop"`
+	IP        string    `json:"ip"`
+	Hostname  string    `json:"hostname,omitempty"`
+	Latency1  float64   `json:"latency1"`  // First probe RTT in ms
+	Latency2  float64   `json:"latency2"`  // Second probe RTT in ms
+	Latency3  float64   `json:"latency3"`  // Third probe RTT in ms
+	AvgLatency float64  `json:"avgLatency"` // Average RTT in ms
+	Loss      int       `json:"loss"`      // Packet loss count (0-3)
+	Timeout   bool      `json:"timeout"`   // All probes timed out
+}
+
+// ==================== NetPath Probe Types ====================
+
+// NetPathProbe represents an active network path probe
+type NetPathProbe struct {
+	ID          string              `json:"id"`
+	Target      string              `json:"target"`
+	TargetIP    string              `json:"targetIP"`
+	Status      string              `json:"status"` // "running", "stopped", "error"
+	Interval    int                 `json:"interval"` // Probe interval in seconds
+	StartedAt   time.Time           `json:"startedAt"`
+	LastProbe   time.Time           `json:"lastProbe"`
+	ProbeCount  int                 `json:"probeCount"`
+	CurrentPath *NetPathResult      `json:"currentPath,omitempty"`
+	History     []NetPathResult     `json:"history,omitempty"` // Last N results
+	Config      NetPathConfig       `json:"config"`
+}
+
+// NetPathConfig holds probe configuration
+type NetPathConfig struct {
+	MaxHops       int     `json:"maxHops"`
+	Timeout       int     `json:"timeout"`       // Timeout per hop in ms
+	ProbesPerHop  int     `json:"probesPerHop"`
+	HistorySize   int     `json:"historySize"`   // Number of historical samples to keep
+}
+
+// NetPathResult represents a single probe cycle result
+type NetPathResult struct {
+	Timestamp     time.Time        `json:"timestamp"`
+	Duration      float64          `json:"duration"`      // Total probe duration in ms
+	TotalLatency  float64          `json:"totalLatency"`  // End-to-end latency
+	TotalHops     int              `json:"totalHops"`
+	PacketLoss    float64          `json:"packetLoss"`    // Overall packet loss %
+	Completed     bool             `json:"completed"`
+	Hops          []NetPathHop     `json:"hops"`
+	HasProblems   bool             `json:"hasProblems"`
+	ProblemHops   []int            `json:"problemHops,omitempty"` // Indices of problem hops
+}
+
+// NetPathHop represents a hop with extended metrics
+type NetPathHop struct {
+	Hop           int       `json:"hop"`
+	IP            string    `json:"ip"`
+	Hostname      string    `json:"hostname,omitempty"`
+	DeviceName    string    `json:"deviceName,omitempty"`  // Friendly device name
+	DeviceType    string    `json:"deviceType,omitempty"`  // router, switch, firewall, server, gateway, cloud, unknown
+	DeviceVendor  string    `json:"deviceVendor,omitempty"` // Cisco, Juniper, etc.
+	ASN           string    `json:"asn,omitempty"`        // Autonomous System Number
+	ISP           string    `json:"isp,omitempty"`        // ISP name
+	Location      string    `json:"location,omitempty"`   // Geographic location hint
+	
+	// Latency metrics
+	AvgLatency    float64   `json:"avgLatency"`
+	MinLatency    float64   `json:"minLatency"`
+	MaxLatency    float64   `json:"maxLatency"`
+	Jitter        float64   `json:"jitter"`        // Latency variation
+	Latencies     []float64 `json:"latencies"`     // All latency samples
+	
+	// Packet metrics
+	PacketsSent   int       `json:"packetsSent"`
+	PacketsRecv   int       `json:"packetsRecv"`
+	PacketLoss    float64   `json:"packetLoss"`    // Percentage
+	
+	// Status
+	Status        string    `json:"status"`        // "healthy", "warning", "critical", "timeout"
+	IsBottleneck  bool      `json:"isBottleneck"`  // High latency jump from previous hop
+	Timeout       bool      `json:"timeout"`
+	
+	// Historical
+	LatencyTrend  string    `json:"latencyTrend,omitempty"` // "stable", "increasing", "decreasing"
+}

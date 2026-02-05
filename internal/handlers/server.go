@@ -18,6 +18,8 @@ import (
 type Server struct {
 	mu             sync.RWMutex
 	collector      *collectors.Manager
+	traceroute     *collectors.TraceRouteCollector
+	netpath        *collectors.NetPathCollector
 	isRunning      bool
 	startedAt      time.Time
 	interval       time.Duration
@@ -46,6 +48,8 @@ func NewServer() (*Server, error) {
 
 	return &Server{
 		collector:  mgr,
+		traceroute: collectors.NewTraceRouteCollector(),
+		netpath:    collectors.NewNetPathCollector(),
 		interval:   time.Second,
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan *models.SystemMetrics, 100),
@@ -68,6 +72,16 @@ func (s *Server) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/metrics/network", s.handleMetricsNetwork)
 	mux.HandleFunc("/api/metrics/processes", s.handleMetricsProcesses)
 	mux.HandleFunc("/api/metrics/history", s.handleMetricsHistory)
+	
+	// Traceroute endpoint
+	mux.HandleFunc("/api/trace", s.handleTrace)
+	
+	// NetPath probe endpoints
+	mux.HandleFunc("/api/netpath/probe", s.handleNetPathProbe)
+	mux.HandleFunc("/api/netpath/probes", s.handleNetPathProbes)
+	mux.HandleFunc("/api/netpath/start", s.handleNetPathStart)
+	mux.HandleFunc("/api/netpath/stop", s.handleNetPathStop)
+	mux.HandleFunc("/api/netpath/delete", s.handleNetPathDelete)
 	
 	// WebSocket endpoint
 	mux.HandleFunc("/ws/metrics", s.handleWebSocket)
@@ -337,6 +351,222 @@ func (s *Server) handleMetricsHistory(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"count":   len(history),
 		"history": history,
+	})
+}
+
+// handleTrace performs a traceroute to the specified target
+func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get target from query or body
+	target := r.URL.Query().Get("target")
+	if target == "" && r.Method == http.MethodPost {
+		var req struct {
+			Target string `json:"target"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			target = req.Target
+		}
+	}
+
+	if target == "" {
+		s.respondError(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	log.Printf("Starting traceroute to %s", target)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	result, err := s.traceroute.Trace(ctx, target)
+	if err != nil {
+		// Still return partial results if available
+		if result != nil {
+			result.Completed = false
+			s.respondJSON(w, http.StatusOK, result)
+			return
+		}
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, result)
+}
+
+// ==================== NetPath Probe Handlers ====================
+
+// handleNetPathProbe performs a single probe (GET) or returns probe data
+func (s *Server) handleNetPathProbe(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("target")
+	log.Printf("NetPath API: Received probe request for target: %s", target)
+	if target == "" {
+		s.respondError(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// Get existing probe or perform one-time probe
+		probe, err := s.netpath.GetProbe(target)
+		if err != nil {
+			log.Printf("NetPath API: No existing probe, starting new probe for %s", target)
+			// Probe doesn't exist, perform one-time probe
+			config := models.NetPathConfig{
+				MaxHops:      30,
+				Timeout:      3000,
+				ProbesPerHop: 3,
+			}
+			result, err := s.netpath.ProbeOnce(target, config)
+			if err != nil {
+				log.Printf("NetPath API: Probe failed for %s: %v", target, err)
+				s.respondError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			log.Printf("NetPath API: Probe completed for %s, returning %d hops", target, len(result.Hops))
+			s.respondJSON(w, http.StatusOK, map[string]interface{}{
+				"success": true,
+				"result":  result,
+			})
+			return
+		}
+		log.Printf("NetPath API: Found existing probe for %s", target)
+		s.respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": true,
+			"probe":   probe,
+		})
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleNetPathProbes returns all active probes
+func (s *Server) handleNetPathProbes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	probes := s.netpath.GetAllProbes()
+	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"probes":  probes,
+	})
+}
+
+// handleNetPathStart starts a continuous probe
+func (s *Server) handleNetPathStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Target   string `json:"target"`
+		Interval int    `json:"interval"` // seconds
+		MaxHops  int    `json:"maxHops"`
+		Timeout  int    `json:"timeout"`  // ms per hop
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Target == "" {
+		s.respondError(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	config := models.NetPathConfig{
+		MaxHops:      req.MaxHops,
+		Timeout:      req.Timeout,
+		ProbesPerHop: 3,
+		HistorySize:  60,
+	}
+
+	if config.MaxHops <= 0 {
+		config.MaxHops = 30
+	}
+	if config.Timeout <= 0 {
+		config.Timeout = 3000
+	}
+
+	probe, err := s.netpath.StartProbe(req.Target, config)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("NetPath: Started probe to %s", req.Target)
+	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"probe":   probe,
+	})
+}
+
+// handleNetPathStop stops a probe
+func (s *Server) handleNetPathStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Target string `json:"target"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := s.netpath.StopProbe(req.Target); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("NetPath: Stopped probe to %s", req.Target)
+	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Probe stopped",
+	})
+}
+
+// handleNetPathDelete deletes a probe
+func (s *Server) handleNetPathDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	target := r.URL.Query().Get("target")
+	if target == "" {
+		var req struct {
+			Target string `json:"target"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			target = req.Target
+		}
+	}
+
+	if target == "" {
+		s.respondError(w, http.StatusBadRequest, "target is required")
+		return
+	}
+
+	if err := s.netpath.DeleteProbe(target); err != nil {
+		s.respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("NetPath: Deleted probe to %s", target)
+	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Probe deleted",
 	})
 }
 

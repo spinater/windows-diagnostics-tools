@@ -388,6 +388,183 @@
             0%, 100% { box-shadow: 0 4px 15px rgba(255, 193, 7, 0.5); }
             50% { box-shadow: 0 4px 25px rgba(255, 193, 7, 0.8); }
         }
+
+        /* Traceroute Diagram Styles */
+        .trace-diagram {
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            padding: 30px 20px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            min-height: 150px;
+        }
+
+        .trace-hop-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 120px;
+        }
+
+        .trace-hop-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .trace-hop-icon:hover {
+            transform: scale(1.1);
+        }
+
+        .trace-hop-icon.source {
+            background: linear-gradient(135deg, #00d9a5, #00b894);
+            box-shadow: 0 4px 15px rgba(0, 217, 165, 0.4);
+        }
+
+        .trace-hop-icon.hop {
+            background: linear-gradient(135deg, #00b4d8, #0096c7);
+            box-shadow: 0 4px 15px rgba(0, 180, 216, 0.4);
+        }
+
+        .trace-hop-icon.timeout {
+            background: linear-gradient(135deg, #6c757d, #495057);
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .trace-hop-icon.target {
+            background: linear-gradient(135deg, #e63946, #c0392b);
+            box-shadow: 0 4px 15px rgba(230, 57, 70, 0.4);
+        }
+
+        .trace-hop-info {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .trace-hop-num {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .trace-hop-ip {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            max-width: 110px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .trace-hop-latency {
+            font-size: 0.75rem;
+            color: var(--accent-yellow);
+        }
+
+        .trace-connector {
+            display: flex;
+            align-items: center;
+            min-width: 60px;
+        }
+
+        .trace-line {
+            flex: 1;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+            position: relative;
+        }
+
+        .trace-line::after {
+            content: '→';
+            position: absolute;
+            right: -5px;
+            top: -10px;
+            color: var(--accent-green);
+            font-size: 1.2rem;
+        }
+
+        .trace-line.slow {
+            background: linear-gradient(90deg, var(--accent-yellow), var(--accent-red));
+        }
+
+        .trace-line.slow::after {
+            color: var(--accent-red);
+        }
+
+        /* Network Topology Diagram Styles */
+        .topology-container {
+            position: relative;
+            min-height: 400px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .topology-canvas {
+            width: 100%;
+            height: 400px;
+        }
+
+        .topology-legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .legend-dot.local { background: #00d9a5; }
+        .legend-dot.established { background: #00b4d8; }
+        .legend-dot.time-wait { background: #ffc107; }
+        .legend-dot.close-wait { background: #e63946; }
+        .legend-dot.listen { background: #9d4edd; }
+
+        .topology-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .topo-stat {
+            background: var(--bg-card);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .topo-stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        .topo-stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -418,6 +595,7 @@
             <button class="tab" onclick="showTab('cpu')">⚡ CPU</button>
             <button class="tab" onclick="showTab('disk')">💾 Disk</button>
             <button class="tab" onclick="showTab('network')">📡 Network</button>
+            <button class="tab" onclick="showTab('traceroute')">�️ NetPath</button>
             <button class="tab" onclick="showTab('processes')">📋 Processes</button>
         </div>
 
@@ -562,13 +740,98 @@
                     </p>
                 </div>
             </div>
+
+            <!-- Network Hop Path Diagram - MOVED BEFORE Active Connections -->
             <div class="card" style="margin-top: 20px;">
-                <div class="card-header">
-                    <span class="card-title">Active Connections</span>
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span class="card-title">🛤️ Network Hop Path - Packet Route Visualization</span>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="topologyTargetSelect" style="padding: 6px 12px; background: var(--bg-secondary); border: 1px solid var(--text-secondary); color: var(--text-primary); border-radius: 5px; min-width: 180px;">
+                            <option value="">Select target to trace...</option>
+                        </select>
+                        <button onclick="traceSelectedTarget()" style="padding: 6px 12px; background: var(--primary); color: white; border: none; border-radius: 5px; cursor: pointer;">
+                            📡 Trace
+                        </button>
+                        <button onclick="clearTracedPaths()" style="padding: 6px 12px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--text-secondary); border-radius: 5px; cursor: pointer;">
+                            🗑️ Clear
+                        </button>
+                    </div>
                 </div>
-                <div class="table-container">
+                <div class="topology-stats">
+                    <div class="topo-stat">
+                        <div class="topo-stat-value green" id="topoUniqueTargets">0</div>
+                        <div class="topo-stat-label">Unique Targets</div>
+                    </div>
+                    <div class="topo-stat">
+                        <div class="topo-stat-value blue" id="topoEstablished">0</div>
+                        <div class="topo-stat-label">Established</div>
+                    </div>
+                    <div class="topo-stat">
+                        <div class="topo-stat-value yellow" id="topoTimeWait">0</div>
+                        <div class="topo-stat-label">Time Wait</div>
+                    </div>
+                    <div class="topo-stat">
+                        <div class="topo-stat-value red" id="topoCloseWait">0</div>
+                        <div class="topo-stat-label">Close Wait</div>
+                    </div>
+                    <div class="topo-stat">
+                        <div class="topo-stat-value purple" id="topoTracedPaths">0</div>
+                        <div class="topo-stat-label">Traced Paths</div>
+                    </div>
+                </div>
+                <div class="topology-container" style="min-height: 250px; overflow-x: auto; background: linear-gradient(180deg, #0a1628 0%, #0f2744 100%); border-radius: 8px;">
+                    <canvas id="topologyCanvas" class="topology-canvas"></canvas>
+                </div>
+                <div class="topology-legend">
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background: #10b981;"></div>
+                        <span>Healthy (&lt;20ms)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background: #f59e0b;"></div>
+                        <span>Slow (20-50ms)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background: #f97316;"></div>
+                        <span>Warning (50-100ms)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background: #ef4444;"></div>
+                        <span>Critical (&gt;100ms)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-dot" style="background: #6b7280;"></div>
+                        <span>Timeout / *</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Connections - Scrollable with Search -->
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <span class="card-title">Active Connections <span id="connectionCount" style="font-size: 12px; color: var(--text-secondary);">(0)</span></span>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="connectionSearch" placeholder="🔍 Search IP, Port, State..." 
+                            oninput="filterConnections()" 
+                            style="padding: 6px 12px; background: var(--bg-secondary); border: 1px solid var(--text-secondary); color: var(--text-primary); border-radius: 5px; width: 200px;">
+                        <select id="stateFilter" onchange="filterConnections()" style="padding: 6px 12px; background: var(--bg-secondary); border: 1px solid var(--text-secondary); color: var(--text-primary); border-radius: 5px;">
+                            <option value="">All States</option>
+                            <option value="ESTABLISHED">ESTABLISHED</option>
+                            <option value="LISTEN">LISTEN</option>
+                            <option value="TIME_WAIT">TIME_WAIT</option>
+                            <option value="CLOSE_WAIT">CLOSE_WAIT</option>
+                            <option value="SYN_SENT">SYN_SENT</option>
+                            <option value="SYN_RECEIVED">SYN_RECEIVED</option>
+                            <option value="FIN_WAIT_1">FIN_WAIT_1</option>
+                            <option value="FIN_WAIT_2">FIN_WAIT_2</option>
+                            <option value="LAST_ACK">LAST_ACK</option>
+                            <option value="CLOSING">CLOSING</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                     <table id="connectionsTable">
-                        <thead>
+                        <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 1;">
                             <tr>
                                 <th>Local Address</th>
                                 <th>Remote Address</th>
@@ -728,6 +991,195 @@
                         <tbody></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <!-- NetPath Tab (SolarWinds-style) -->
+        <div id="tab-traceroute" class="tab-content">
+            <!-- Probe Configuration Panel -->
+            <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #0a1628 0%, #1a3a5c 100%);">
+                <div class="card-header" style="border-bottom: 1px solid #2a4a6c;">
+                    <span class="card-title">🎯 NetPath Probe Configuration</span>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="display: grid; grid-template-columns: 1fr 150px 150px 120px auto; gap: 15px; align-items: end;">
+                        <div>
+                            <label style="display: block; color: #7a9ab8; font-size: 12px; margin-bottom: 5px;">Target Endpoint</label>
+                            <input type="text" id="netpathTarget" placeholder="IP address or hostname (e.g., 8.8.8.8, google.com)" 
+                                   style="width: 100%; padding: 12px 15px; border-radius: 8px; border: 2px solid #2a4a6c; 
+                                          background: #0f2744; color: #e2e8f0; font-size: 14px; transition: border-color 0.3s;"
+                                   onfocus="this.style.borderColor='#4aa3df'" onblur="this.style.borderColor='#2a4a6c'">
+                        </div>
+                        <div>
+                            <label style="display: block; color: #7a9ab8; font-size: 12px; margin-bottom: 5px;">Max Hops</label>
+                            <select id="netpathMaxHops" style="width: 100%; padding: 12px 15px; border-radius: 8px; border: 2px solid #2a4a6c; 
+                                                               background: #0f2744; color: #e2e8f0; font-size: 14px;">
+                                <option value="15">15 hops</option>
+                                <option value="20">20 hops</option>
+                                <option value="30" selected>30 hops</option>
+                                <option value="50">50 hops</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; color: #7a9ab8; font-size: 12px; margin-bottom: 5px;">Timeout</label>
+                            <select id="netpathTimeout" style="width: 100%; padding: 12px 15px; border-radius: 8px; border: 2px solid #2a4a6c; 
+                                                               background: #0f2744; color: #e2e8f0; font-size: 14px;">
+                                <option value="1000">1 second</option>
+                                <option value="2000">2 seconds</option>
+                                <option value="3000" selected>3 seconds</option>
+                                <option value="5000">5 seconds</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; color: #7a9ab8; font-size: 12px; margin-bottom: 5px;">Mode</label>
+                            <select id="netpathMode" style="width: 100%; padding: 12px 15px; border-radius: 8px; border: 2px solid #2a4a6c; 
+                                                            background: #0f2744; color: #e2e8f0; font-size: 14px;">
+                                <option value="once">Single Probe</option>
+                                <option value="continuous">Continuous</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button id="netpathStartBtn" onclick="startNetPathProbe()" 
+                                    style="padding: 12px 25px; border-radius: 8px; border: none; 
+                                           background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+                                           color: white; font-size: 14px; font-weight: 600; cursor: pointer;
+                                           display: flex; align-items: center; gap: 8px; transition: transform 0.2s, box-shadow 0.2s;"
+                                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 15px rgba(16,185,129,0.4)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                                <span>▶</span> Start Probe
+                            </button>
+                        </div>
+                    </div>
+                    <div id="netpathStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
+                </div>
+            </div>
+
+            <!-- Active Probes List -->
+            <div id="activeProbesPanel" class="card" style="margin-bottom: 20px; display: none;">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="card-title">📡 Active Probes</span>
+                    <button onclick="refreshAllProbes()" style="padding: 6px 12px; border-radius: 5px; border: 1px solid #4aa3df; 
+                                                                 background: transparent; color: #4aa3df; cursor: pointer; font-size: 12px;">
+                        🔄 Refresh All
+                    </button>
+                </div>
+                <div id="activeProbesList" style="display: flex; flex-wrap: wrap; gap: 10px; padding: 15px;"></div>
+            </div>
+
+            <!-- Probe Results -->
+            <div id="netpathResults" style="display: none;">
+                <!-- Path Health Summary -->
+                <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #0f2744 0%, #1a3a5c 100%);">
+                    <div class="card-header">
+                        <span class="card-title">📊 Path Health Summary</span>
+                        <span id="netpathLastUpdate" style="font-size: 12px; color: #7a9ab8; margin-left: 15px;"></span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px; padding: 20px;">
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700; color: #4aa3df;" id="npTargetDisplay">--</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">Target</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700; color: #10b981;" id="npTotalHops">--</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">Total Hops</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700; color: #f59e0b;" id="npLatency">-- ms</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">End-to-End Latency</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700;" id="npPacketLoss">--%</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">Packet Loss</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700;" id="npProblems">0</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">Problem Hops</div>
+                        </div>
+                        <div style="text-align: center; padding: 15px; background: #0a1628; border-radius: 10px; border: 1px solid #2a4a6c;">
+                            <div style="font-size: 28px; font-weight: 700;" id="npStatus">--</div>
+                            <div style="font-size: 11px; color: #7a9ab8; margin-top: 5px;">Status</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NetPath Visual Diagram -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <span class="card-title">🗺️ Network Path Visualization</span>
+                        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                            <!-- Zoom Controls - Made More Prominent -->
+                            <div style="display: flex; align-items: center; gap: 8px; background: rgba(74,163,223,0.15); padding: 6px 12px; border-radius: 8px; border: 1px solid #4aa3df;">
+                                <span style="font-size: 12px; color: #4aa3df; font-weight: 600;">Zoom:</span>
+                                <button onclick="zoomNetPath(-0.2)" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid #4aa3df; background: #0d3d6b; color: #4aa3df; cursor: pointer; font-size: 18px; font-weight: bold;">−</button>
+                                <span id="netpathZoomLevel" style="font-size: 13px; color: #fff; min-width: 50px; text-align: center; font-weight: 600;">100%</span>
+                                <button onclick="zoomNetPath(0.2)" style="width: 32px; height: 32px; border-radius: 6px; border: 2px solid #4aa3df; background: #0d3d6b; color: #4aa3df; cursor: pointer; font-size: 18px; font-weight: bold;">+</button>
+                                <button onclick="resetNetPathZoom()" style="padding: 6px 12px; border-radius: 6px; border: 2px solid #f59e0b; background: rgba(245,158,11,0.2); color: #f59e0b; cursor: pointer; font-size: 11px; font-weight: 600; margin-left: 8px;">Reset</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></span>
+                                <span style="font-size: 11px; color: #7a9ab8;">Healthy</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; border-radius: 50%; background: #f59e0b;"></span>
+                                <span style="font-size: 11px; color: #7a9ab8;">Slow</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; border-radius: 50%; background: #f97316;"></span>
+                                <span style="font-size: 11px; color: #7a9ab8;">Warning</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; border-radius: 50%; background: #ef4444;"></span>
+                                <span style="font-size: 11px; color: #7a9ab8;">Critical</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; border-radius: 50%; background: #6b7280;"></span>
+                                <span style="font-size: 11px; color: #7a9ab8;">Timeout</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="netpathCanvasContainer" style="background: linear-gradient(180deg, #0a1628 0%, #0f2744 100%); border-radius: 8px; overflow: auto; min-height: 350px; max-height: 500px; position: relative; cursor: grab;">
+                        <canvas id="netpathCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Detailed Hop Metrics -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📋 Hop-by-Hop Device Details</span>
+                    </div>
+                    <div class="table-container" style="max-height: 500px; overflow-y: auto;">
+                        <table id="netpathTable" style="width: 100%;">
+                            <thead style="position: sticky; top: 0; background: var(--bg-card); z-index: 1;">
+                                <tr>
+                                    <th style="width: 40px;">Hop</th>
+                                    <th style="width: 50px;">Status</th>
+                                    <th style="width: 35px;">Type</th>
+                                    <th style="min-width: 120px;">Device Name</th>
+                                    <th style="width: 110px;">IP Address</th>
+                                    <th style="min-width: 140px;">Hostname</th>
+                                    <th style="width: 70px;">Vendor</th>
+                                    <th style="min-width: 100px;">ISP / ASN</th>
+                                    <th style="width: 65px;">Avg RTT</th>
+                                    <th style="width: 75px;">Min-Max</th>
+                                    <th style="width: 50px;">Jitter</th>
+                                    <th style="width: 45px;">Loss</th>
+                                    <th style="width: 85px;">Location</th>
+                                </tr>
+                            </thead>
+                            <tbody id="netpathTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty State -->
+            <div id="netpathEmpty" class="card" style="text-align: center; padding: 60px 20px;">
+                <div style="font-size: 64px; margin-bottom: 20px;">🌐</div>
+                <h3 style="color: #7a9ab8; margin-bottom: 10px;">No Active Probes</h3>
+                <p style="color: #5a7a98; max-width: 400px; margin: 0 auto;">
+                    Enter a target IP or hostname above and click "Start Probe" to begin network path analysis.
+                    NetPath will show you each hop, latency, packet loss, and identify problem areas.
+                </p>
             </div>
         </div>
     </main>
